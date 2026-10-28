@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Community Map - ปักหมุดสถานที่ยอดนิยม & ESP32 Live Status</title>
+    
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    
+    <style>
+        * {
+            box-sizing: border-box;
+            font-family: 'Sukhumvit Set', 'Segoe UI', Tahoma, sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background-color: #f4f6f9;
+            color: #333;
+        }
+
+        header {
+            background: #1e293b;
+            color: white;
+            padding: 1rem 2rem;
+            text-align: center;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            height: calc(100vh - 70px);
+        }
+
+        .form-section {
+            flex: 1;
+            min-width: 340px;
+            padding: 1.5rem;
+            background: white;
+            box-shadow: 2px 0 5px rgba(0,0,0,0.05);
+            z-index: 1000;
+            overflow-y: auto;
+        }
+
+        .form-group {
+            margin-bottom: 1rem;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 0.4rem;
+            font-weight: bold;
+            color: #475569;
+        }
+
+        input[type="text"] {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid #cbd5e1;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .coords-box {
+            display: flex;
+            gap: 10px;
+        }
+
+        .coords-box input {
+            background-color: #f1f5f9;
+        }
+
+        .btn-submit {
+            width: 100%;
+            padding: 0.85rem;
+            background-color: #2563eb;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 1rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 1rem;
+        }
+
+        .btn-submit:hover {
+            background-color: #1d4ed8;
+        }
+
+        .btn-overview {
+            width: 100%;
+            padding: 0.75rem;
+            background-color: #0d9488;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 0.95rem;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background 0.2s;
+            margin-bottom: 1.5rem;
+        }
+
+        .btn-overview:hover {
+            background-color: #0f766e;
+        }
+
+        .popular-card {
+            background: #fef3c7;
+            border-left: 4px solid #f59e0b;
+            padding: 1rem;
+            border-radius: 6px;
+            margin-bottom: 1.5rem;
+        }
+
+        .popular-card h4 {
+            color: #b45309;
+            margin-bottom: 0.3rem;
+        }
+
+        .map-section {
+            flex: 2;
+            min-width: 400px;
+            height: 100%;
+        }
+
+        #map {
+            width: 100%;
+            height: 100%;
+        }
+
+        /* Marker Custom CSS for ESP32 Red Blink */
+        .blinking-red-marker {
+            background-color: #ef4444;
+            border: 3px solid #ffffff;
+            border-radius: 50%;
+            box-shadow: 0 0 10px #ef4444;
+            animation: blinker 1s linear infinite;
+        }
+
+        @keyframes blinker {
+            50% { opacity: 0.3; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h2>📍 Community Map & Popular Spots</h2>
+    </header>
+
+    <div class="container">
+        <div class="form-section">
+            <!-- ปุ่มดูแผนที่รวมทั้งหมด -->
+            <button id="btnOverview" class="btn-overview">🗺️ ดูแผนที่รวมทั้งหมด (Fit All Pins)</button>
+
+            <!-- การ์ดแสดงสถานที่ยอดนิยม -->
+            <div id="popularSection" class="popular-card" style="display: none;">
+                <h4>🔥 สถานที่ยอดนิยม (Popular Spot)</h4>
+                <p id="popularInfo" style="font-size: 0.9rem; color: #78350f;">กำลังคำนวณหมุดที่มีการปักซ้ำมากที่สุด...</p>
+            </div>
+
+            <h3>เพิ่มหมุดใหม่</h3>
+            <p style="font-size: 0.85rem; color: #64748b; margin-bottom: 1rem;">คลิกบนแผนที่ทางขวาเพื่อเลือกตำแหน่งปักหมุด</p>
+
+            <form id="pinForm">
+                <div class="form-group">
+                    <label for="name">ชื่อผู้ปักหมุด / ชื่อสถานที่:</label>
+                    <input type="text" id="name" placeholder="เช่น นาย A หรือ ร้านชาบูอร่อย" required>
+                </div>
+
+                <div class="form-group">
+                    <label for="hashtag">แฮชแท็ก (#):</label>
+                    <input type="text" id="hashtag" placeholder="เช่น #หิวชาบู #มุมถ่ายรูป" required>
+                </div>
+
+                <div class="form-group">
+                    <label>พิกัดที่เลือก (Click on Map):</label>
+                    <div class="coords-box">
+                        <input type="text" id="lat" placeholder="Latitude" readonly required>
+                        <input type="text" id="lng" placeholder="Longitude" readonly required>
+                    </div>
+                </div>
+
+                <button type="submit" id="submitBtn" class="btn-submit">🚀 กดส่งข้อมูลปักหมุด</button>
+            </form>
+        </div>
+
+        <div class="map-section">
+            <div id="map"></div>
+        </div>
+    </div>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <!-- Paho MQTT Web Client -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/paho-mqtt/1.0.1/mqttws31.min.js"></script>
+
+    <script>
+        // 📌 1. URL Apps Script ของคุณ (ชีตหมุด)
+        const SCRIPT_URL = "https://script.google.com/macros/s/AKfycby958ZOuWXEu6bKTWaB_cl69aVjq9krdvjFFuoiDUxtgtChLf7XMdmIpAQexdhUgVnL/exec";
+
+        // 📊 URL Apps Script ของชีต Visit Log (เก็บการเข้าใช้งานแยกต่างหาก)
+        const VISIT_URL = "https://script.google.com/macros/s/AKfycbwm_Xf8KHOLjjo3maf3KsFJK5d_3iKSu0Pxk_rN7v8iEbYdNb43_pD-tS_5nCRNIkvz/exec";
+
+        // กำหนดพิกัดเริ่มต้น (กทม.)
+        const map = L.map('map').setView([13.7563, 100.5018], 12);
+
+        // โหลดแผนที่ OpenStreetMap
+        L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        let tempMarker = null;
+        let allMarkersGroup = L.featureGroup().addTo(map); // เก็บ Group หมุดทั้งหมด
+        let esp32Markers = {}; // เก็บ Object ของหมุด ESP32 ฟิกซ์ 2 ตัว
+
+        // Custom Icon สำหรับ ESP32
+        const greenIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-green.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        const redIcon = L.icon({
+            iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-red.png',
+            shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/0.7.7/images/marker-shadow.png',
+            iconSize: [25, 41],
+            iconAnchor: [12, 41],
+            popupAnchor: [1, -34],
+            shadowSize: [41, 41]
+        });
+
+        // สร้าง 2 หมุดฟิกซ์ล่วงหน้าสำหรับ ESP32 ตัวที่ 1 และ 2 (ปรับพิกัดตามต้องการได้)
+        esp32Markers['node1'] = L.marker([13.7563, 100.5018], { icon: greenIcon })
+            .bindPopup("<b>ESP32 Node 1</b><br>สถานะ: ปกติ (เขียว)").addTo(map);
+        esp32Markers['node2'] = L.marker([13.7600, 100.5100], { icon: greenIcon })
+            .bindPopup("<b>ESP32 Node 2</b><br>สถานะ: ปกติ (เขียว)").addTo(map);
+
+        allMarkersGroup.addLayer(esp32Markers['node1']);
+        allMarkersGroup.addLayer(esp32Markers['node2']);
+
+        // คลิกเลือกจุดบนแผนที่
+        map.on('click', function(e) {
+            const lat = e.latlng.lat.toFixed(6);
+            const lng = e.latlng.lng.toFixed(6);
+
+            document.getElementById('lat').value = lat;
+            document.getElementById('lng').value = lng;
+
+            if (tempMarker) map.removeLayer(tempMarker);
+            
+            tempMarker = L.marker([lat, lng]).addTo(map)
+                .bindPopup("เลือกจุดนี้เรียบร้อย กรอกชื่อแล้วกดส่งได้เลย!").openPopup();
+        });
+
+        // 📍 ดึงชื่อสถานที่ใกล้พิกัด (OpenStreetMap Overpass)
+        const placeCache = {};
+
+        function distM(lat1, lng1, lat2, lng2) {
+            const dx = (lng2 - lng1) * 111320 * Math.cos(lat1 * Math.PI / 180);
+            const dy = (lat2 - lat1) * 110540;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        async function getPlaceName(lat, lng, fallback) {
+            lat = parseFloat(lat);
+            lng = parseFloat(lng);
+            const key = lat.toFixed(4) + ',' + lng.toFixed(4);
+            if (placeCache[key]) return placeCache[key];
+
+            const R = 80; // รัศมีค้นหา (เมตร) ปรับได้
+            const query = `[out:json][timeout:10];
+                (
+                nwr(around:${R},${lat},${lng})["name"]["amenity"];
+                nwr(around:${R},${lat},${lng})["name"]["tourism"];
+                nwr(around:${R},${lat},${lng})["name"]["shop"];
+                nwr(around:${R},${lat},${lng})["name"]["leisure"];
+                );
+                out tags center 30;`;
+
+            try {
+                const res = await fetch('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    body: 'data=' + encodeURIComponent(query)
+                });
+                const data = await res.json();
+
+                const places = (data.elements || []).map(el => {
+                    const elLat = el.lat ?? (el.center && el.center.lat);
+                    const elLng = el.lon ?? (el.center && el.center.lon);
+                    return {
+                        name: el.tags['name:th'] || el.tags.name,
+                        worship: el.tags.amenity === 'place_of_worship' ? 1 : 0,
+                        dist: distM(lat, lng, elLat, elLng)
+                    };
+                }).filter(p => p.name && !isNaN(p.dist));
+
+                // วัด/สถานที่ศาสนาก่อน แล้วค่อยเรียงตามระยะใกล้สุด
+                places.sort((a, b) => (b.worship - a.worship) || (a.dist - b.dist));
+
+                const name = places.length ? places[0].name : fallback;
+                placeCache[key] = name;
+                return name;
+            } catch (e) {
+                return fallback;
+            }
+        }
+
+        // 📌 2. ฟังก์ชันดึงหมุดจาก Google Sheets + คำนวณสถานที่ยอดนิยม
+        async function loadMarkers() {
+            try {
+                console.log("กำลังดึงข้อมูลหมุดจาก Google Sheets...");
+                const response = await fetch(SCRIPT_URL);
+                const pins = await response.json();
+                console.log("ข้อมูลหมุดที่ดึงมาได้:", pins);
+
+                const locationCounts = {};
+                let maxCount = 0;
+                let popularLocation = null;
+
+                pins.forEach(pin => {
+                    if (pin.lat && pin.lng) {
+                        // เพิ่มหมุดลงแผนที่
+                        const m = L.marker([pin.lat, pin.lng])
+                            .bindPopup(`<b>${pin.name}</b><br><span style="color: #2563eb;">${pin.hashtag}</span>`);
+                        allMarkersGroup.addLayer(m);
+
+                        // 🔍 Logic คำนวณการซ้ำพิกัด (ปัดทศนิยม 4 ตำแหน่งเพื่อกรุ๊ปพื้นที่ใกล้เคียง)
+                        const key = `${parseFloat(pin.lat).toFixed(4)},${parseFloat(pin.lng).toFixed(4)}`;
+                        if (!locationCounts[key]) {
+                            locationCounts[key] = { count: 1, name: pin.name, hashtag: pin.hashtag, lat: pin.lat, lng: pin.lng };
+                        } else {
+                            locationCounts[key].count += 1;
+                        }
+
+                        if (locationCounts[key].count > maxCount) {
+                            maxCount = locationCounts[key].count;
+                            popularLocation = locationCounts[key];
+                        }
+                    }
+                });
+
+                // แสดงสถานที่ยอดนิยมถ้ามีการซ้ำตั้งแต่ 2 ครั้งขึ้นไป
+                if (popularLocation && maxCount >= 2) {
+                    document.getElementById('popularSection').style.display = 'block';
+                    const placeName = await getPlaceName(popularLocation.lat, popularLocation.lng, popularLocation.name);
+                    document.getElementById('popularInfo').innerHTML = 
+                        `📌 <b>${placeName}</b> (${popularLocation.hashtag})<br>มีผู้ปักหมุดซ้ำกัน <b>${maxCount} ครั้ง</b>`;
+                }
+
+            } catch (err) {
+                console.error("เกิดข้อผิดพลาดในการดึงหมุด:", err);
+            }
+        }
+
+        // 📌 3. ปุ่มกดดูแผนที่รวมทั้งหมด (Fit Bounds)
+        document.getElementById('btnOverview').addEventListener('click', function() {
+            if (allMarkersGroup.getLayers().length > 0) {
+                map.fitBounds(allMarkersGroup.getBounds(), { padding: [50, 50] });
+            } else {
+                alert("ยังไม่มีหมุดในระบบ!");
+            }
+        });
+
+        // 📌 4. ส่งข้อมูลเข้า Google Sheet เมื่อกดส่งฟอร์ม
+        document.getElementById('pinForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const submitBtn = document.getElementById('submitBtn');
+            submitBtn.innerText = "⏳ กำลังบันทึกข้อมูล...";
+            submitBtn.disabled = true;
+
+            const payload = {
+                name: document.getElementById('name').value,
+                hashtag: document.getElementById('hashtag').value,
+                lat: document.getElementById('lat').value,
+                lng: document.getElementById('lng').value
+            };
+
+            try {
+                await fetch(SCRIPT_URL, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                alert("ปักหมุดสำเร็จ! ข้อมูลถูกส่งไปบันทึกใน Google Sheet เรียบร้อยแล้ว");
+                
+                const newMarker = L.marker([payload.lat, payload.lng])
+                    .bindPopup(`<b>${payload.name}</b><br><span style="color: #2563eb;">${payload.hashtag}</span>`);
+                
+                allMarkersGroup.addLayer(newMarker);
+                newMarker.openPopup();
+
+                document.getElementById('pinForm').reset();
+                if (tempMarker) map.removeLayer(tempMarker);
+
+            } catch (err) {
+                alert("เกิดข้อผิดพลาดในการส่งข้อมูล!");
+                console.error(err);
+            } finally {
+                submitBtn.innerText = "🚀 กดส่งข้อมูลปักหมุด";
+                submitBtn.disabled = false;
+            }
+        });
+
+        // 📌 5. เชื่อมต่อ MQTT Web Socket เพื่ออัปเดตสถานะหมุด ESP32 Real-time
+        const client = new Paho.MQTT.Client("broker.hivemq.com", Number(8000), "clientId_" + Math.random().toString(16).substr(2, 8));
+
+        client.onMessageArrived = function(message) {
+            console.log("MQTT Received:", message.destinationName, message.payloadString);
+            
+            // Topic format: esp32/node1/status หรือ esp32/node2/status
+            if (message.destinationName === "esp32/node1/status") {
+                if (message.payloadString === "RED") {
+                    esp32Markers['node1'].setIcon(redIcon).bindPopup("<b>ESP32 Node 1</b><br>⚠️ ถูกกดปุ่ม! (สีแดง)").openPopup();
+                } else {
+                    esp32Markers['node1'].setIcon(greenIcon).bindPopup("<b>ESP32 Node 1</b><br>สถานะ: ปกติ (เขียว)");
+                }
+            } else if (message.destinationName === "esp32/node2/status") {
+                if (message.payloadString === "RED") {
+                    esp32Markers['node2'].setIcon(redIcon).bindPopup("<b>ESP32 Node 2</b><br>⚠️ ถูกกดปุ่ม! (สีแดง)").openPopup();
+                } else {
+                    esp32Markers['node2'].setIcon(greenIcon).bindPopup("<b>ESP32 Node 2</b><br>สถานะ: ปกติ (เขียว)");
+                }
+            }
+        };
+
+        client.connect({
+            onSuccess: function() {
+                console.log("MQTT Connected!");
+                client.subscribe("esp32/+/status");
+            },
+            onFailure: function(err) {
+                console.log("MQTT Connection Failed:", err);
+            }
+        });
+
+        // 📌 6. บันทึกการเข้าใช้งาน (ส่งไปชีต Visit Log แยกต่างหาก นับครั้งเดียวต่อการเปิดแท็บ)
+        function logVisit() {
+            if (sessionStorage.getItem('visitLogged')) return;
+            sessionStorage.setItem('visitLogged', '1');
+
+            fetch(VISIT_URL, {
+                method: 'POST',
+                mode: 'no-cors',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ type: 'visit' })
+            }).catch(err => console.error('log visit failed:', err));
+        }
+
+        // เรียกดึงหมุดเดิมที่มีอยู่แล้วเมื่อเปิดหน้าเว็บ + บันทึกการเข้าใช้งาน
+        loadMarkers();
+        logVisit();
+    </script>
+</body>
+</html>

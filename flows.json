@@ -1,0 +1,27 @@
+[
+    {
+        "id": "http1",
+        "type": "http request",
+        "z": "tab_sheet_alert",
+        "name": "ดึงข้อมูล Sheet",
+        "method": "GET",
+        "ret": "txt",
+        "paytoqs": "ignore",
+        "url": "https://docs.google.com/spreadsheets/d/17gSYiXX3h6KsB4b2zMudHaBfyTWTf53-_qGh-X5HcmM/gviz/tq?tqx=out:csv&gid=0",
+        "tls": "",
+        "persist": false,
+        "proxy": "",
+        "insecureHTTPParser": false,
+        "authType": "",
+        "senderr": false,
+        "headers": [],
+        "x": 340,
+        "y": 120,
+        "wires": [
+            [
+                "csv1",
+                "dbg_raw"
+            ]
+        ]
+    }
+]
